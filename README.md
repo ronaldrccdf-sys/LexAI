@@ -16,8 +16,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/14uwsMXW-XfHt3WJpAjRK7a
 1. Install dependencies:
    `npm install`
 2. Configure frontend + backend environment:
-   - Frontend: set `GEMINI_API_KEY` in [.env.local](.env.local).
-   - Backend: copy `backend/.env.example` to `backend/.env` and adjust `CORS_ORIGIN` if needed.
+   - Backend: copy `backend/.env.example` to `backend/.env` and configure `CORS_ORIGIN`, `DATAJUD_API_KEY` e `GEMINI_API_KEY`.
 3. Install backend dependencies:
    `npm --prefix backend install`
 4. Start backend:

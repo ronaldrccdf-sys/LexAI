@@ -3,12 +3,14 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { z } from 'zod';
+import { GoogleGenAI } from '@google/genai';
 import { db, runMigrations, seedIfEmpty } from './db.js';
 
 const app = express();
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const datajudApiKey = process.env.DATAJUD_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -16,6 +18,13 @@ app.use(express.json({ limit: '1mb' }));
 
 runMigrations();
 seedIfEmpty();
+
+const getAI = () => {
+  if (!geminiApiKey) {
+    throw new Error('GEMINI_API_KEY não configurada.');
+  }
+  return new GoogleGenAI({ apiKey: geminiApiKey });
+};
 
 const resolveTribunalEndpoint = (cnj: string): string => {
   const parts = cnj.split('.');
@@ -212,6 +221,317 @@ app.post('/api/datajud/process', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(502).json({ error: 'Falha ao consultar DATAJUD.' });
+  }
+});
+
+app.post('/api/ai/daily-briefing', async (req, res) => {
+  const schema = z.object({ stats: z.any(), userName: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Gere um briefing diário estratégico LexAI para o advogado ${parsed.data.userName} baseado nestes dados: ${JSON.stringify(parsed.data.stats)}. 
+      REGRAS OBRIGATÓRIAS:
+      1. NÃO utilize caracteres especiais como asteriscos (*), hashtags (#), sublinhados (_) ou qualquer formatação markdown.
+      2. Mantenha a organização por tópicos claros.
+      3. Utilize apenas hifens (-) e quebras de linha para separar os pontos.
+      4. O tom deve ser executivo, direto e motivador.`
+    });
+    res.json({ data: response.text?.replace(/[*#_~`>]/g, '') || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao gerar briefing.' });
+  }
+});
+
+app.post('/api/ai/interpret-movement', async (req, res) => {
+  const schema = z.object({ movement: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Interprete este movimento processual: ${parsed.data.movement}`
+    });
+    res.json({ data: response.text || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao interpretar movimentação.' });
+  }
+});
+
+app.post('/api/ai/smart-time-entry', async (req, res) => {
+  const schema = z.object({ description: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Formalize este timesheet: ${parsed.data.description}`
+    });
+    res.json({ data: response.text || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao formatar timesheet.' });
+  }
+});
+
+app.post('/api/ai/management-analysis', async (req, res) => {
+  const schema = z.object({ firmData: z.any() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `Elabore um diagnóstico de gestão para este escritório: ${JSON.stringify(parsed.data.firmData)}`
+    });
+    res.json({ data: response.text || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao gerar análise.' });
+  }
+});
+
+app.post('/api/ai/answer-management-query', async (req, res) => {
+  const schema = z.object({ query: z.string(), firmData: z.any() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `Responda a consulta: ${parsed.data.query}. Dados: ${JSON.stringify(parsed.data.firmData)}`
+    });
+    res.json({ data: response.text || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao responder consulta.' });
+  }
+});
+
+app.post('/api/ai/billing-report', async (req, res) => {
+  const schema = z.object({ clientName: z.string(), period: z.string(), events: z.any() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Gere um relatório de atividades para ${parsed.data.clientName} referente a ${parsed.data.period}: ${JSON.stringify(parsed.data.events)}`
+    });
+    res.json({ data: response.text || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao gerar relatório.' });
+  }
+});
+
+app.post('/api/ai/whatsapp-summary', async (req, res) => {
+  const schema = z.object({ events: z.any() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Crie um resumo para WhatsApp destes eventos: ${JSON.stringify(parsed.data.events)}`
+    });
+    res.json({ data: response.text || '' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao gerar resumo.' });
+  }
+});
+
+app.post('/api/ai/search-jurisprudence', async (req, res) => {
+  const schema = z.object({ query: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `Pesquise jurisprudência recente nos tribunais brasileiros via Radar LexAI: ${parsed.data.query}.`,
+      config: { tools: [{ googleSearch: {} }] }
+    });
+    const items = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
+      .filter((chunk: any) => chunk.web)
+      .map((chunk: any, i: number) => ({
+        id: `j-${i}`,
+        title: chunk.web.title,
+        summary: '',
+        uri: chunk.web.uri
+      }));
+    res.json({ data: items });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao buscar jurisprudência.' });
+  }
+});
+
+app.post('/api/ai/search-doctrines', async (req, res) => {
+  const schema = z.object({ query: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `Aja como um pesquisador acadêmico jurídico. Busque no Google Acadêmico (scholar.google.com), Scielo e repositórios acadêmicos teses e artigos científicos sobre: ${parsed.data.query}. FOCO: Retorne os nomes exatos dos artigos e autores.`,
+      config: { tools: [{ googleSearch: {} }] }
+    });
+    const items = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
+      .filter((chunk: any) => chunk.web)
+      .map((chunk: any, i: number) => ({
+        id: `doc-${i}`,
+        title: chunk.web.title || 'Artigo Acadêmico Indefinido',
+        summary: '',
+        uri: chunk.web.uri
+      }));
+    res.json({ data: items });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao buscar doutrinas.' });
+  }
+});
+
+app.post('/api/ai/advanced-drafting', async (req, res) => {
+  const schema = z.object({
+    prompt: z.string(),
+    files: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      data: z.string(),
+      type: z.string(),
+      role: z.string()
+    })),
+    jurisprudence: z.array(z.object({ id: z.string(), title: z.string(), summary: z.string(), uri: z.string() })).optional(),
+    doctrines: z.array(z.object({ id: z.string(), title: z.string(), summary: z.string(), uri: z.string() })).optional()
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const parts: any[] = [];
+    let contextStr = '';
+    const geminiNativeMimes = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+
+    for (const f of parsed.data.files) {
+      if (geminiNativeMimes.includes(f.type)) {
+        parts.push({ inlineData: { data: f.data, mimeType: f.type } });
+      } else {
+        contextStr += `\nCONTEÚDO ARQUIVO ${f.name}: ${f.data}`;
+      }
+    }
+
+    if (parsed.data.jurisprudence?.length) {
+      contextStr += `\n\nTESES JURISPRUDENCIAIS PARA USAR:\n${parsed.data.jurisprudence.map(j => `Julgado: ${j.title}`).join('\n')}`;
+    }
+    if (parsed.data.doctrines?.length) {
+      contextStr += `\n\nREFERÊNCIAS DOUTRINÁRIAS/ACADÊMICAS:\n${parsed.data.doctrines.map(d => `Artigo: ${d.title}`).join('\n')}`;
+    }
+
+    parts.push({ text: `${contextStr}\n\nSOLICITAÇÃO: ${parsed.data.prompt}` });
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: { parts },
+      config: {
+        systemInstruction: "Você é um Redator Jurídico Sênior LexAI. Escreva peças em HTML limpo (p, b, h1, br). IMPORTANTE: Jamais coloque Local, Data ou Assinatura ao final, o sistema fará isso automaticamente.",
+        temperature: 0.2
+      }
+    });
+    res.json({ data: { html: response.text?.replace(/```html/gi, '').replace(/```/g, '').trim() || '' } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao gerar peça.' });
+  }
+});
+
+app.post('/api/ai/extract-data', async (req, res) => {
+  const schema = z.object({ base64: z.string(), mimeType: z.string(), prompt: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: {
+        parts: [
+          { inlineData: { data: parsed.data.base64, mimeType: parsed.data.mimeType } },
+          { text: parsed.data.prompt }
+        ]
+      },
+      config: { responseMimeType: 'application/json' }
+    });
+    res.json({ data: JSON.parse(response.text || '{}') });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao extrair dados.' });
+  }
+});
+
+app.post('/api/ai/unified-action', async (req, res) => {
+  const schema = z.object({
+    query: z.string(),
+    files: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      data: z.string(),
+      type: z.string(),
+      role: z.string()
+    })),
+    appContext: z.any()
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  try {
+    const ai = getAI();
+    const parts: any[] = [];
+    parsed.data.files.forEach(file => {
+      parts.push({ inlineData: { data: file.data, mimeType: file.type } });
+    });
+    parts.push({ text: parsed.data.query });
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: { parts },
+      config: {
+        systemInstruction: `Você é a LexAI. Contexto do escritório: ${JSON.stringify(parsed.data.appContext)}`
+      }
+    });
+    res.json({ data: { text: response.text || '' } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao processar comando.' });
   }
 });
 

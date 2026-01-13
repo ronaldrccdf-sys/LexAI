@@ -48,5 +48,20 @@ export const api = {
   getBillingCycles: () => request<BillingCycle[]>('/api/billing/cycles'),
   createBillingCycle: (payload: Omit<BillingCycle, 'id'>) => request<BillingCycle>('/api/billing/cycles', { method: 'POST', body: JSON.stringify(payload) }),
   updateBillingCycle: (id: string, payload: Partial<Pick<BillingCycle, 'status' | 'requirements'>>) => request<BillingCycle>(`/api/billing/cycles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  syncBilling: () => request<{ message: string; syncedAt: string }>('/api/billing/sync', { method: 'POST' })
+  syncBilling: () => request<{ message: string; syncedAt: string }>('/api/billing/sync', { method: 'POST' }),
+  aiDailyBriefing: (stats: any, userName: string) => request<string>('/api/ai/daily-briefing', { method: 'POST', body: JSON.stringify({ stats, userName }) }),
+  aiInterpretMovement: (movement: string) => request<string>('/api/ai/interpret-movement', { method: 'POST', body: JSON.stringify({ movement }) }),
+  aiSmartTimeEntry: (description: string) => request<string>('/api/ai/smart-time-entry', { method: 'POST', body: JSON.stringify({ description }) }),
+  aiManagementAnalysis: (firmData: any) => request<string>('/api/ai/management-analysis', { method: 'POST', body: JSON.stringify({ firmData }) }),
+  aiAnswerManagementQuery: (query: string, firmData: any) => request<string>('/api/ai/answer-management-query', { method: 'POST', body: JSON.stringify({ query, firmData }) }),
+  aiBillingReport: (clientName: string, period: string, events: any[]) =>
+    request<string>('/api/ai/billing-report', { method: 'POST', body: JSON.stringify({ clientName, period, events }) }),
+  aiWhatsappSummary: (events: any[]) => request<string>('/api/ai/whatsapp-summary', { method: 'POST', body: JSON.stringify({ events }) }),
+  aiSearchJurisprudence: (query: string) => request<any[]>('/api/ai/search-jurisprudence', { method: 'POST', body: JSON.stringify({ query }) }),
+  aiSearchDoctrines: (query: string) => request<any[]>('/api/ai/search-doctrines', { method: 'POST', body: JSON.stringify({ query }) }),
+  aiAdvancedDrafting: (payload: any) => request<{ html: string }>('/api/ai/advanced-drafting', { method: 'POST', body: JSON.stringify(payload) }),
+  aiExtractData: (payload: { base64: string; mimeType: string; prompt: string }) =>
+    request<any>('/api/ai/extract-data', { method: 'POST', body: JSON.stringify(payload) }),
+  aiUnifiedAction: (payload: { query: string; files: any[]; appContext: any }) =>
+    request<{ text: string }>('/api/ai/unified-action', { method: 'POST', body: JSON.stringify(payload) })
 };
