@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Hearing } from '../types';
 import { legalAssistantService } from '../services/gemini';
+import { api } from '../services/api';
 
 interface AudienciasProps {
   hearings: Hearing[];
@@ -23,9 +24,15 @@ const Audiencias: React.FC<AudienciasProps> = ({ hearings, setHearings }) => {
     responsible: 'Dr. Ronald Serra'
   });
 
-  const handleRegisterResult = (id: string, result: any) => {
-    setHearings(prev => prev.map(h => h.id === id ? { ...h, result } : h));
-    alert(`Resultado "${result}" registrado.`);
+  const handleRegisterResult = async (id: string, result: any) => {
+    try {
+      const updated = await api.updateHearing(id, { result });
+      setHearings(prev => prev.map(h => h.id === id ? updated : h));
+      alert(`Resultado "${result}" registrado.`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao atualizar audiência no backend.');
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,7 +63,7 @@ const Audiencias: React.FC<AudienciasProps> = ({ hearings, setHearings }) => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newHearing: Hearing = {
       id: Math.random().toString(36).substr(2, 9),
       matterId: 'manual',
@@ -72,8 +79,14 @@ const Audiencias: React.FC<AudienciasProps> = ({ hearings, setHearings }) => {
       settlementProbability: 50,
       valueInvolved: 0
     };
-    setHearings(prev => [newHearing, ...prev]);
-    setIsModalOpen(false);
+    try {
+      const saved = await api.createHearing(newHearing);
+      setHearings(prev => [saved, ...prev]);
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar audiência no backend.');
+    }
   };
 
   return (

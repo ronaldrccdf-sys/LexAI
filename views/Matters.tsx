@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { Case, CaseUpdate } from '../types';
 import { legalAssistantService } from '../services/gemini';
 import { datajudService } from '../services/escavador';
+import { api } from '../services/api';
 
 interface MattersProps {
   matters: Case[];
@@ -46,7 +47,11 @@ const Matters: React.FC<MattersProps> = ({ matters, setMatters, onGenerateAI }) 
             type: 'Movimentação'
           }))
         };
-        setMatters(prev => [newCase, ...prev]);
+        const saved = await api.createMatter(newCase);
+        if (newCase.updates?.length) {
+          await api.updateMatter(saved.id, { lastMovementSummary: saved.lastMovementSummary, updates: newCase.updates });
+        }
+        setMatters(prev => [saved, ...prev]);
         setSearchCNJ('');
       } else {
         alert("Processo não localizado na base do CNJ.");
@@ -74,9 +79,8 @@ const Matters: React.FC<MattersProps> = ({ matters, setMatters, onGenerateAI }) 
           type: 'Movimentação'
         }));
 
-        setMatters(prev => prev.map(item => 
-          item.id === m.id ? { ...item, updates: newUpdates, lastMovementSummary: lastSummary } : item
-        ));
+        const updated = await api.updateMatter(m.id, { lastMovementSummary: lastSummary, updates: newUpdates });
+        setMatters(prev => prev.map(item => item.id === m.id ? updated : item));
         setSelectedCaseUpdates({ caseId: m.id, updates: newUpdates });
       }
     } catch (err) {

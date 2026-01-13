@@ -1,33 +1,19 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { legalAssistantService } from '../services/gemini';
+import { api } from '../services/api';
 
 const Activities: React.FC = () => {
-  const STORAGE_KEY = 'lexai_activities_state_v1';
-  const BACKUP_KEY = 'lexai_activities_backup_v1';
-
-  const loadStoredState = () => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (error) {
-      console.warn('Falha ao carregar atividades salvas:', error);
-      return null;
-    }
-  };
-
-  const storedState = loadStoredState();
-
-  const [description, setDescription] = useState(storedState?.description || '');
-  const [selectedMatter, setSelectedMatter] = useState(storedState?.selectedMatter || '2023.0001.S - Inventário Souza');
-  const [duration, setDuration] = useState(storedState?.duration || '');
-  const [entries, setEntries] = useState(storedState?.entries || [
-    { id: '1', matter: '2023.0001.S - Inventário Souza', description: 'Revisão de documentos judiciais...', duration: '1.5' },
-    { id: '2', matter: '2023.0492.E - Recurso Trabalhista', description: 'Reunião com cliente e estratégia.', duration: '2.0' },
-    { id: '3', matter: '2023.0015.A - Ação de Cobrança', description: 'Elaboração de minuta processual.', duration: '1.0' }
-  ]);
+  const [description, setDescription] = useState('');
+  const [selectedMatter, setSelectedMatter] = useState('');
+  const [duration, setDuration] = useState('');
+  const [entries, setEntries] = useState<
+    { id: string; matter: string; description: string; duration: string; createdAt?: string }[]
+  >([]);
+  const [matters, setMatters] = useState<{ id: string; number: string; title: string }[]>([]);
   const [isFormatting, setIsFormatting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   const handleAIFormat = async () => {
@@ -49,35 +35,58 @@ const Activities: React.FC = () => {
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleSaveEntry = () => {
+  const handleSaveEntry = async () => {
+    if (!selectedMatter) {
+      alert('Selecione um processo para registrar a atividade.');
+      return;
+    }
     if (!description.trim()) {
       alert('Descreva o serviço para registrar a atividade.');
       return;
     }
-    const newEntry = {
-      id: Math.random().toString(36).slice(2, 9),
-      matter: selectedMatter,
-      description: description.trim(),
-      duration: duration || '1.0'
-    };
-    setEntries(prev => [newEntry, ...prev]);
-    setDescription('');
-    setDuration('');
+    try {
+      const newEntry = await api.createActivity({
+        matter: selectedMatter,
+        description: description.trim(),
+        duration: duration || '1.0'
+      });
+      setEntries(prev => [newEntry, ...prev]);
+      setDescription('');
+      setDuration('');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar atividade no backend.');
+    }
   };
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const payload = { description, selectedMatter, duration, entries };
-    const handler = window.setTimeout(() => {
+    const loadActivities = async () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-        localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: payload }));
+        setIsLoading(true);
+        const [data, mattersData] = await Promise.all([
+          api.getActivities(),
+          api.getMatters()
+        ]);
+        if (data.length > 0) {
+          setEntries(data);
+        }
+        if (mattersData.length > 0) {
+          const mapped = mattersData.map(m => ({ id: m.id, number: m.number, title: m.title }));
+          setMatters(mapped);
+          if (!selectedMatter) {
+            setSelectedMatter(`${mapped[0].number} - ${mapped[0].title}`);
+          }
+        }
+        setApiError(null);
       } catch (error) {
-        console.warn('Falha ao salvar backup de atividades:', error);
+        console.error(error);
+        setApiError('Não foi possível carregar atividades.');
+      } finally {
+        setIsLoading(false);
       }
-    }, 300);
-    return () => window.clearTimeout(handler);
-  }, [description, selectedMatter, duration, entries]);
+    };
+    loadActivities();
+  }, []);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -104,9 +113,15 @@ const Activities: React.FC = () => {
                     onChange={(e) => setSelectedMatter(e.target.value)}
                     className="w-full bg-[#1C1C1C] border border-gray-700 p-2 rounded text-sm outline-none"
                   >
-                    <option>2023.0001.S - Inventário Souza</option>
-                    <option>2023.0492.E - Recurso Trabalhista</option>
-                    <option>2023.0015.A - Ação de Cobrança</option>
+                    {matters.length === 0 ? (
+                      <option value="">Nenhum processo disponível</option>
+                    ) : (
+                      matters.map(matter => (
+                        <option key={matter.id} value={`${matter.number} - ${matter.title}`}>
+                          {matter.number} - {matter.title}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div className="w-full sm:w-32">
@@ -143,7 +158,11 @@ const Activities: React.FC = () => {
           <div className="graphite-light p-6 rounded-2xl border border-gray-800 shadow-xl">
             <h3 className="text-lg font-bold mb-4">Lançamentos Recentes</h3>
             <div className="space-y-4">
-              {entries.length > 0 ? entries.map(entry => (
+              {isLoading ? (
+                <p className="text-xs text-gray-500 italic">Carregando atividades...</p>
+              ) : apiError ? (
+                <p className="text-xs text-red-400">{apiError}</p>
+              ) : entries.length > 0 ? entries.map(entry => (
                 <div key={entry.id} className="flex justify-between items-start border-b border-gray-800 pb-3 last:border-0">
                   <div>
                     <p className="text-xs font-bold text-[#D4AF37]">#{entry.matter}</p>

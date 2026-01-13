@@ -2,67 +2,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BillingCycle, Contract, BillingStatus, Contact } from '../types';
 import { legalAssistantService } from '../services/gemini';
+import { api } from '../services/api';
 
 const Billing: React.FC = () => {
-  const STORAGE_KEY = 'lexai_billing_state_v1';
-  const BACKUP_KEY = 'lexai_billing_backup_v1';
-
-  const loadStoredState = () => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (error) {
-      console.warn('Falha ao carregar faturamento salvo:', error);
-      return null;
-    }
-  };
-
-  const storedState = loadStoredState();
-
   // Mock de contatos integrados
-  const [clients] = useState<Contact[]>([
-    { id: '1', name: 'Maria Souza', document: '123.456.789-00', email: 'maria@email.com', phone: '(11) 99999-9999', type: 'Individual', totalMatters: 2, folderId: 'folder_1', category: 'Recorrente', financialStatus: 'Em dia' },
-    { id: '2', name: 'Empresa XPTO', document: '12.345.678/0001-99', email: 'contato@xpto.com', phone: '(11) 3333-3333', type: 'Empresa', totalMatters: 1, folderId: 'folder_2', category: 'Contencioso em massa', financialStatus: 'Acordos em curso' }
-  ]);
-
-  const [contracts] = useState<Contract[]>([
-    { id: 'ct1', clientId: '1', type: 'Híbrido', monthlyValue: 2500, successPercentage: 20, validity: '2025-12-31', status: 'Ativo', adjustments: 'IGP-M', specialConditions: 'Exige Certidões Federais' },
-    { id: 'ct2', clientId: '2', type: 'Mensalidade fixa', monthlyValue: 5000, validity: '2024-06-30', status: 'Ativo', adjustments: 'IPCA', specialConditions: 'Relatório Mensal obrigatório' }
-  ]);
-
-  const [cycles, setCycles] = useState<BillingCycle[]>(storedState?.cycles || [
-    {
-      id: 'cy1',
-      clientId: '1',
-      clientName: 'Maria Souza',
-      period: 'Novembro 2023',
-      type: 'Híbrido',
-      baseValue: 2500,
-      successFeeValue: 1200,
-      totalValue: 3700,
-      status: 'Pago',
-      requirements: { nf: true, certidaoFederal: true, certidaoEstadual: true, certidaoMunicipal: true, certidaoFGTS: true, certidaoTrabalhista: true, activityReport: true },
-      dueDate: '2023-11-10'
-    },
-    {
-      id: 'cy2',
-      clientId: '2',
-      clientName: 'Empresa XPTO',
-      period: 'Novembro 2023',
-      type: 'Mensalidade fixa',
-      baseValue: 5000,
-      successFeeValue: 0,
-      totalValue: 5000,
-      status: 'Em preparação',
-      requirements: { nf: false, certidaoFederal: true, certidaoEstadual: false, certidaoMunicipal: false, certidaoFGTS: true, certidaoTrabalhista: false, activityReport: false },
-      dueDate: '2023-11-20'
-    }
-  ]);
-
-  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(storedState?.selectedCycleId || null);
+  const [clients, setClients] = useState<Contact[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [cycles, setCycles] = useState<BillingCycle[]>([]);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isProcessingMass, setIsProcessingMass] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const clientBillingList = useMemo(() => {
     return clients.map(client => {
@@ -78,7 +29,7 @@ const Billing: React.FC = () => {
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
 
-  const handleManualCycle = () => {
+  const handleManualCycle = async () => {
     const selectedClient = selectedCycle
       ? clients.find(client => client.id === selectedCycle.clientId)
       : clients[0];
@@ -95,8 +46,7 @@ const Billing: React.FC = () => {
     const baseValue = contract?.monthlyValue || 0;
     const successFeeValue = contract?.successPercentage ? Math.round(baseValue * (contract.successPercentage / 100)) : 0;
 
-    const newCycle: BillingCycle = {
-      id: `cy-${Date.now()}`,
+    const newCyclePayload: Omit<BillingCycle, 'id'> = {
       clientId: selectedClient.id,
       clientName: selectedClient.name,
       period,
@@ -117,9 +67,15 @@ const Billing: React.FC = () => {
       dueDate
     };
 
-    setCycles(prev => [newCycle, ...prev]);
-    setSelectedCycleId(newCycle.id);
-    alert(`Ciclo manual criado para ${selectedClient.name}.`);
+    try {
+      const saved = await api.createBillingCycle(newCyclePayload);
+      setCycles(prev => [saved, ...prev]);
+      setSelectedCycleId(saved.id);
+      alert(`Ciclo manual criado para ${selectedClient.name}.`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao criar ciclo no backend.');
+    }
   };
 
   const handleGenerateReport = async () => {
@@ -132,7 +88,9 @@ const Billing: React.FC = () => {
       ];
       const report = await legalAssistantService.generateBillingActivityReport(selectedCycle.clientName, selectedCycle.period, mockEvents);
       alert("Relatório de Atividades Gerado via LexAI:\n\n" + report);
-      setCycles(prev => prev.map(c => c.id === selectedCycle.id ? { ...c, requirements: { ...c.requirements, activityReport: true } } : c));
+      const updatedRequirements = { ...selectedCycle.requirements, activityReport: true };
+      const updated = await api.updateBillingCycle(selectedCycle.id, { requirements: updatedRequirements });
+      setCycles(prev => prev.map(c => c.id === selectedCycle.id ? updated : c));
     } catch (err) {
       alert("Erro ao gerar relatório.");
     } finally {
@@ -148,25 +106,40 @@ const Billing: React.FC = () => {
     }, 2000);
   };
 
-  const handleSendCharge = () => {
+  const handleSendCharge = async () => {
     if (!selectedCycle) return;
-    setCycles(prev => prev.map(c => c.id === selectedCycle.id ? { ...c, status: 'Enviado para pagamento' } : c));
-    alert(`Cobrança enviada para ${selectedCycle.clientName}.`);
+    try {
+      const updated = await api.updateBillingCycle(selectedCycle.id, { status: 'Enviado para pagamento' });
+      setCycles(prev => prev.map(c => c.id === selectedCycle.id ? updated : c));
+      alert(`Cobrança enviada para ${selectedCycle.clientName}.`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao enviar cobrança no backend.');
+    }
   };
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const payload = { cycles, selectedCycleId };
-    const handler = window.setTimeout(() => {
+    const loadBilling = async () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-        localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: payload }));
+        setIsLoading(true);
+        const [clientsData, contractsData, cyclesData] = await Promise.all([
+          api.getContacts(),
+          api.getContracts(),
+          api.getBillingCycles()
+        ]);
+        setClients(clientsData);
+        setContracts(contractsData);
+        setCycles(cyclesData);
+        setApiError(null);
       } catch (error) {
-        console.warn('Falha ao salvar backup de faturamento:', error);
+        console.error(error);
+        setApiError('Não foi possível carregar dados do faturamento.');
+      } finally {
+        setIsLoading(false);
       }
-    }, 300);
-    return () => window.clearTimeout(handler);
-  }, [cycles, selectedCycleId]);
+    };
+    loadBilling();
+  }, []);
 
   return (
     <div className="space-y-8 animate-fadeIn pb-20 px-2 sm:px-0 text-left">
@@ -199,10 +172,15 @@ const Billing: React.FC = () => {
           <div className="graphite-light p-6 rounded-[2.5rem] border border-gray-800 shadow-xl overflow-hidden">
             <h3 className="text-lg font-black text-white uppercase tracking-tighter mb-6">Status de Faturamento por Cliente</h3>
             <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left text-sm min-w-[700px]">
-                <thead className="bg-[#121212] text-[9px] uppercase text-gray-500 font-black tracking-widest">
-                  <tr>
-                    <th className="p-4">Cliente</th>
+              {isLoading ? (
+                <p className="text-xs text-gray-500 italic">Carregando faturamento...</p>
+              ) : apiError ? (
+                <p className="text-xs text-red-400">{apiError}</p>
+              ) : (
+                <table className="w-full text-left text-sm min-w-[700px]">
+                  <thead className="bg-[#121212] text-[9px] uppercase text-gray-500 font-black tracking-widest">
+                    <tr>
+                      <th className="p-4">Cliente</th>
                     <th className="p-4">Tipo Contrato</th>
                     <th className="p-4">Vencimento</th>
                     <th className="p-4">Valor Mensal</th>
@@ -255,15 +233,16 @@ const Billing: React.FC = () => {
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
 
         {/* Painel de Detalhes da IA */}
         <div className="lg:col-span-4 space-y-6">
-          {selectedCycle ? (
+          {!isLoading && selectedCycle ? (
             <div className="graphite-light p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl space-y-8 animate-fadeIn">
               <div className="text-center">
                 <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">Total deste Ciclo</p>

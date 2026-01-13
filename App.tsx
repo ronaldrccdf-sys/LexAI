@@ -12,6 +12,7 @@ import Billing from './views/Billing';
 import Reports from './views/Reports';
 import { View, Case, Hearing, AgendaEvent, Contact } from './types';
 import { legalAssistantService } from './services/gemini';
+import { api } from './services/api';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -21,43 +22,13 @@ const App: React.FC = () => {
   const [userName] = useState('Dr. Ronald Serra');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
 
-  const APP_STORAGE_KEY = 'lexai_app_state_v1';
-  const APP_BACKUP_KEY = 'lexai_app_state_backup_v1';
-
-  const loadStoredState = () => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = localStorage.getItem(APP_STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (error) {
-      console.warn('Falha ao carregar estado salvo:', error);
-      return null;
-    }
-  };
-
-  const storedState = loadStoredState();
-
   // Application States
-  const [contacts, setContacts] = useState<Contact[]>(() => storedState?.contacts || [
-    { id: '1', name: 'Maria Souza', document: '123.456.789-00', email: 'maria@email.com', phone: '(11) 99999-9999', type: 'Individual', totalMatters: 2, folderId: 'folder_1', category: 'Recorrente', financialStatus: 'Em dia' }
-  ]);
-  const [matters, setMatters] = useState<Case[]>(() => storedState?.matters || [
-    { 
-      id: '1', 
-      number: '1000234-12.2023.8.26.0100', 
-      title: 'Inventário Família Souza', 
-      client: 'Maria Souza', 
-      opposingParty: 'Fazenda Pública Estadual',
-      status: 'Aberto', 
-      type: 'Cível', 
-      responsible: 'Dr. Ronald Serra', 
-      openDate: '12/01/2023', 
-      billableHours: 42.5,
-      lastMovementSummary: 'O juiz determinou a juntada de novas certidões negativas de débito para prosseguimento da partilha.'
-    }
-  ]);
-  const [hearings, setHearings] = useState<Hearing[]>(() => storedState?.hearings || []);
-  const [agendaEvents, setAgendaEvents] = useState<AgendaEvent[]>(() => storedState?.agendaEvents || []);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [matters, setMatters] = useState<Case[]>([]);
+  const [hearings, setHearings] = useState<Hearing[]>([]);
+  const [agendaEvents, setAgendaEvents] = useState<AgendaEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Action Bridge for AI
   const handleAIAction = async (name: string, args: any) => {
@@ -75,8 +46,14 @@ const App: React.FC = () => {
           category: args.category || 'Novo (IA)',
           financialStatus: 'Em dia'
         };
-        setContacts(prev => [newClient, ...prev]);
-        return `Cliente ${args.name} cadastrado com sucesso na base de dados.`;
+        try {
+          const saved = await api.createContact(newClient);
+          setContacts(prev => [saved, ...prev]);
+          return `Cliente ${args.name} cadastrado com sucesso na base de dados.`;
+        } catch (error) {
+          console.error(error);
+          return 'Não foi possível salvar o cliente no backend.';
+        }
 
       case 'navigate_to_view':
         setCurrentView(args.view);
@@ -99,8 +76,14 @@ const App: React.FC = () => {
           openDate: new Date().toLocaleDateString('pt-BR'),
           billableHours: 0
         };
-        setMatters(prev => [newCase, ...prev]);
-        return `Processo ${args.number} criado e vinculado a ${args.clientName}.`;
+        try {
+          const saved = await api.createMatter(newCase);
+          setMatters(prev => [saved, ...prev]);
+          return `Processo ${args.number} criado e vinculado a ${args.clientName}.`;
+        } catch (error) {
+          console.error(error);
+          return 'Não foi possível salvar o processo no backend.';
+        }
 
       default:
         console.warn("Ação não reconhecida:", name);
@@ -113,18 +96,30 @@ const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const payload = { contacts, matters, hearings, agendaEvents };
-    const handler = window.setTimeout(() => {
+    const loadData = async () => {
       try {
-        localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(payload));
-        localStorage.setItem(APP_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: payload }));
+        setIsLoading(true);
+        await api.health();
+        const [contactsData, mattersData, hearingsData, agendaData] = await Promise.all([
+          api.getContacts(),
+          api.getMatters(),
+          api.getHearings(),
+          api.getAgenda()
+        ]);
+        setContacts(contactsData);
+        setMatters(mattersData);
+        setHearings(hearingsData);
+        setAgendaEvents(agendaData);
+        setApiError(null);
       } catch (error) {
-        console.warn('Falha ao salvar backup automático:', error);
+        console.error(error);
+        setApiError('Backend indisponível. Inicie o servidor para acessar o LexAI.');
+      } finally {
+        setIsLoading(false);
       }
-    }, 300);
-    return () => window.clearTimeout(handler);
-  }, [contacts, matters, hearings, agendaEvents]);
+    };
+    loadData();
+  }, []);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
@@ -145,6 +140,24 @@ const App: React.FC = () => {
       default: return <Dashboard userName={userName} />;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-primary flex items-center justify-center text-gray-400 text-sm">
+        Conectando ao backend...
+      </div>
+    );
+  }
+
+  if (apiError) {
+    return (
+      <div className="min-h-screen bg-primary flex flex-col items-center justify-center text-center gap-4 text-gray-400 text-sm px-6">
+        <p className="text-lg font-black gold-text">Backend obrigatório</p>
+        <p>{apiError}</p>
+        <p className="text-[10px] uppercase tracking-widest">Execute: cd backend && npm install && npm run dev</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-primary transition-colors duration-300">
