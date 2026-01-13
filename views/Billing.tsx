@@ -1,9 +1,25 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BillingCycle, Contract, BillingStatus, Contact } from '../types';
 import { legalAssistantService } from '../services/gemini';
 
 const Billing: React.FC = () => {
+  const STORAGE_KEY = 'lexai_billing_state_v1';
+  const BACKUP_KEY = 'lexai_billing_backup_v1';
+
+  const loadStoredState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.warn('Falha ao carregar faturamento salvo:', error);
+      return null;
+    }
+  };
+
+  const storedState = loadStoredState();
+
   // Mock de contatos integrados
   const [clients] = useState<Contact[]>([
     { id: '1', name: 'Maria Souza', document: '123.456.789-00', email: 'maria@email.com', phone: '(11) 99999-9999', type: 'Individual', totalMatters: 2, folderId: 'folder_1', category: 'Recorrente', financialStatus: 'Em dia' },
@@ -15,7 +31,7 @@ const Billing: React.FC = () => {
     { id: 'ct2', clientId: '2', type: 'Mensalidade fixa', monthlyValue: 5000, validity: '2024-06-30', status: 'Ativo', adjustments: 'IPCA', specialConditions: 'Relatório Mensal obrigatório' }
   ]);
 
-  const [cycles, setCycles] = useState<BillingCycle[]>([
+  const [cycles, setCycles] = useState<BillingCycle[]>(storedState?.cycles || [
     {
       id: 'cy1',
       clientId: '1',
@@ -44,7 +60,7 @@ const Billing: React.FC = () => {
     }
   ]);
 
-  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(storedState?.selectedCycleId || null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isProcessingMass, setIsProcessingMass] = useState(false);
 
@@ -137,6 +153,20 @@ const Billing: React.FC = () => {
     setCycles(prev => prev.map(c => c.id === selectedCycle.id ? { ...c, status: 'Enviado para pagamento' } : c));
     alert(`Cobrança enviada para ${selectedCycle.clientName}.`);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const payload = { cycles, selectedCycleId };
+    const handler = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: payload }));
+      } catch (error) {
+        console.warn('Falha ao salvar backup de faturamento:', error);
+      }
+    }, 300);
+    return () => window.clearTimeout(handler);
+  }, [cycles, selectedCycleId]);
 
   return (
     <div className="space-y-8 animate-fadeIn pb-20 px-2 sm:px-0 text-left">

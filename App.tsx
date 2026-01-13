@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import AIAssistant from './components/AIAssistant';
 import Dashboard from './views/Dashboard';
@@ -21,11 +21,27 @@ const App: React.FC = () => {
   const [userName] = useState('Dr. Ronald Serra');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
 
+  const APP_STORAGE_KEY = 'lexai_app_state_v1';
+  const APP_BACKUP_KEY = 'lexai_app_state_backup_v1';
+
+  const loadStoredState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(APP_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.warn('Falha ao carregar estado salvo:', error);
+      return null;
+    }
+  };
+
+  const storedState = loadStoredState();
+
   // Application States
-  const [contacts, setContacts] = useState<Contact[]>([
+  const [contacts, setContacts] = useState<Contact[]>(() => storedState?.contacts || [
     { id: '1', name: 'Maria Souza', document: '123.456.789-00', email: 'maria@email.com', phone: '(11) 99999-9999', type: 'Individual', totalMatters: 2, folderId: 'folder_1', category: 'Recorrente', financialStatus: 'Em dia' }
   ]);
-  const [matters, setMatters] = useState<Case[]>([
+  const [matters, setMatters] = useState<Case[]>(() => storedState?.matters || [
     { 
       id: '1', 
       number: '1000234-12.2023.8.26.0100', 
@@ -40,8 +56,8 @@ const App: React.FC = () => {
       lastMovementSummary: 'O juiz determinou a juntada de novas certidões negativas de débito para prosseguimento da partilha.'
     }
   ]);
-  const [hearings, setHearings] = useState<Hearing[]>([]);
-  const [agendaEvents, setAgendaEvents] = useState<AgendaEvent[]>([]);
+  const [hearings, setHearings] = useState<Hearing[]>(() => storedState?.hearings || []);
+  const [agendaEvents, setAgendaEvents] = useState<AgendaEvent[]>(() => storedState?.agendaEvents || []);
 
   // Action Bridge for AI
   const handleAIAction = async (name: string, args: any) => {
@@ -95,6 +111,20 @@ const App: React.FC = () => {
     if (theme === 'light') document.documentElement.classList.add('light-mode');
     else document.documentElement.classList.remove('light-mode');
   }, [theme]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const payload = { contacts, matters, hearings, agendaEvents };
+    const handler = window.setTimeout(() => {
+      try {
+        localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(APP_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: payload }));
+      } catch (error) {
+        console.warn('Falha ao salvar backup automático:', error);
+      }
+    }, 300);
+    return () => window.clearTimeout(handler);
+  }, [contacts, matters, hearings, agendaEvents]);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 

@@ -1,12 +1,28 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { legalAssistantService } from '../services/gemini';
 
 const Activities: React.FC = () => {
-  const [description, setDescription] = useState('');
-  const [selectedMatter, setSelectedMatter] = useState('2023.0001.S - Inventário Souza');
-  const [duration, setDuration] = useState('');
-  const [entries, setEntries] = useState([
+  const STORAGE_KEY = 'lexai_activities_state_v1';
+  const BACKUP_KEY = 'lexai_activities_backup_v1';
+
+  const loadStoredState = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.warn('Falha ao carregar atividades salvas:', error);
+      return null;
+    }
+  };
+
+  const storedState = loadStoredState();
+
+  const [description, setDescription] = useState(storedState?.description || '');
+  const [selectedMatter, setSelectedMatter] = useState(storedState?.selectedMatter || '2023.0001.S - Inventário Souza');
+  const [duration, setDuration] = useState(storedState?.duration || '');
+  const [entries, setEntries] = useState(storedState?.entries || [
     { id: '1', matter: '2023.0001.S - Inventário Souza', description: 'Revisão de documentos judiciais...', duration: '1.5' },
     { id: '2', matter: '2023.0492.E - Recurso Trabalhista', description: 'Reunião com cliente e estratégia.', duration: '2.0' },
     { id: '3', matter: '2023.0015.A - Ação de Cobrança', description: 'Elaboração de minuta processual.', duration: '1.0' }
@@ -48,6 +64,20 @@ const Activities: React.FC = () => {
     setDescription('');
     setDuration('');
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const payload = { description, selectedMatter, duration, entries };
+    const handler = window.setTimeout(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data: payload }));
+      } catch (error) {
+        console.warn('Falha ao salvar backup de atividades:', error);
+      }
+    }, 300);
+    return () => window.clearTimeout(handler);
+  }, [description, selectedMatter, duration, entries]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
