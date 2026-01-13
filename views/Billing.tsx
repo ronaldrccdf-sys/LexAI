@@ -100,10 +100,15 @@ const Billing: React.FC = () => {
 
   const handleMassBilling = async () => {
     setIsProcessingMass(true);
-    setTimeout(() => {
-      alert("LexAI processou todos os contratos integrados. Ciclos de faturamento atualizados.");
+    try {
+      const result = await api.syncBilling();
+      alert(result.message);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao sincronizar clientes no backend.');
+    } finally {
       setIsProcessingMass(false);
-    }, 2000);
+    }
   };
 
   const handleSendCharge = async () => {

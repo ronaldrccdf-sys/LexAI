@@ -69,6 +69,31 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
     loadData();
   }, []);
 
+  const handleCallClient = () => {
+    if (!selectedContact?.phone) {
+      alert('Telefone não disponível para este cliente.');
+      return;
+    }
+    window.location.href = `tel:${selectedContact.phone}`;
+  };
+
+  const handleEmailClient = () => {
+    if (!selectedContact?.email) {
+      alert('E-mail não disponível para este cliente.');
+      return;
+    }
+    window.location.href = `mailto:${selectedContact.email}`;
+  };
+
+  const handleViewInvoices = () => {
+    const items = billingCycles.filter(cy => cy.clientId === selectedContactId);
+    if (items.length === 0) {
+      alert('Nenhum ciclo de faturamento disponível para este cliente.');
+      return;
+    }
+    alert(`Foram encontrados ${items.length} ciclo(s) para este cliente.`);
+  };
+
   const handleSmartIngest = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -368,7 +393,7 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
               <h3 className="text-xl font-black uppercase tracking-tighter">Histórico Financeiro & Ciclos</h3>
               <p className="text-[10px] text-gray-500 uppercase font-bold">Faturas enviadas, pagas e apurações de êxito.</p>
             </div>
-            <button className="gold-gradient px-6 py-2 rounded-xl text-[10px] font-black text-white shadow-lg active:scale-95 transition-all">
+            <button onClick={handleViewInvoices} className="gold-gradient px-6 py-2 rounded-xl text-[10px] font-black text-white shadow-lg active:scale-95 transition-all">
               VISUALIZAR INVOICES
             </button>
           </header>
@@ -445,8 +470,8 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
             <p className="text-gray-500 text-xs font-mono mt-2 opacity-60 tracking-[0.1em]">{selectedContact.document} • {selectedContact.email}</p>
           </div>
           <div className="flex gap-3 sm:gap-4 w-full sm:w-auto mt-4 sm:mt-0">
-            <button className="flex-1 sm:flex-none p-4 sm:p-5 bg-green-900/20 text-green-400 rounded-2xl hover:bg-green-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📱</button>
-            <button className="flex-1 sm:flex-none p-4 sm:p-5 bg-blue-900/20 text-blue-400 rounded-2xl hover:bg-blue-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📧</button>
+            <button onClick={handleCallClient} className="flex-1 sm:flex-none p-4 sm:p-5 bg-green-900/20 text-green-400 rounded-2xl hover:bg-green-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📱</button>
+            <button onClick={handleEmailClient} className="flex-1 sm:flex-none p-4 sm:p-5 bg-blue-900/20 text-blue-400 rounded-2xl hover:bg-blue-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📧</button>
           </div>
         </header>
 

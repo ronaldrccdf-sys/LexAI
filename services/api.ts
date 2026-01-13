@@ -46,5 +46,6 @@ export const api = {
   deleteFile: (id: string) => request<void>(`/api/files/${id}`, { method: 'DELETE' }),
   getBillingCycles: () => request<BillingCycle[]>('/api/billing/cycles'),
   createBillingCycle: (payload: Omit<BillingCycle, 'id'>) => request<BillingCycle>('/api/billing/cycles', { method: 'POST', body: JSON.stringify(payload) }),
-  updateBillingCycle: (id: string, payload: Partial<Pick<BillingCycle, 'status' | 'requirements'>>) => request<BillingCycle>(`/api/billing/cycles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+  updateBillingCycle: (id: string, payload: Partial<Pick<BillingCycle, 'status' | 'requirements'>>) => request<BillingCycle>(`/api/billing/cycles/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  syncBilling: () => request<{ message: string; syncedAt: string }>('/api/billing/sync', { method: 'POST' })
 };
