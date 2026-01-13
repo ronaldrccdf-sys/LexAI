@@ -22,6 +22,7 @@ const request = async <T>(path: string, options?: RequestInit): Promise<T> => {
 
 export const api = {
   health: () => request<{ status: string }>('/api/health'),
+  getDatajudProcess: (cnj: string) => request<any | null>('/api/datajud/process', { method: 'POST', body: JSON.stringify({ cnj }) }),
   getContacts: () => request<Contact[]>('/api/contacts'),
   createContact: (payload: Contact) => request<Contact>('/api/contacts', { method: 'POST', body: JSON.stringify(payload) }),
   getContracts: () => request<Contract[]>('/api/contracts'),

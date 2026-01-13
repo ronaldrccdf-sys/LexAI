@@ -8,6 +8,7 @@ import { db, runMigrations, seedIfEmpty } from './db.js';
 const app = express();
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const datajudApiKey = process.env.DATAJUD_API_KEY;
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -15,6 +16,33 @@ app.use(express.json({ limit: '1mb' }));
 
 runMigrations();
 seedIfEmpty();
+
+const resolveTribunalEndpoint = (cnj: string): string => {
+  const parts = cnj.split('.');
+  if (parts.length < 5) return 'tjsp';
+
+  const j = parts[2];
+  const tr = parts[3];
+
+  if (j === '8') {
+    const tjMap: Record<string, string> = {
+      '01': 'tjac', '02': 'tjal', '03': 'tjap', '04': 'tjam', '05': 'tjba',
+      '06': 'tjce', '07': 'tjdf', '08': 'tjes', '09': 'tjgo', '10': 'tjma',
+      '11': 'tjmt', '12': 'tjms', '13': 'tjmg', '14': 'tjpa', '15': 'tjpb',
+      '16': 'tjpr', '17': 'tjpe', '18': 'tjpi', '19': 'tjrj', '20': 'tjrn',
+      '21': 'tjrs', '22': 'tjro', '23': 'tjrr', '24': 'tjsc', '25': 'tjse',
+      '26': 'tjsp', '27': 'tjt0'
+    };
+    return `tj${tjMap[tr] || 'sp'}`;
+  }
+
+  if (j === '4') return `trt${parseInt(tr, 10)}`;
+  if (j === '3') return `trf${parseInt(tr, 10)}`;
+  if (j === '1') return 'stf';
+  if (j === '9') return 'stj';
+
+  return 'tjsp';
+};
 
 const mapContact = (row: any) => ({
   id: row.id,
@@ -121,6 +149,70 @@ const mapBillingCycle = (row: any) => ({
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.post('/api/datajud/process', async (req, res) => {
+  const schema = z.object({ cnj: z.string().min(5) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+  if (!datajudApiKey) {
+    return res.status(500).json({ error: 'DATAJUD_API_KEY não configurada.' });
+  }
+
+  const cleanCNJ = parsed.data.cnj.replace(/[^\d.-]/g, '');
+  const tribunalSlug = resolveTribunalEndpoint(cleanCNJ);
+  const endpoint = `https://api-publica.datajud.cnj.jus.br/api_publica_${tribunalSlug}/_search`;
+  const body = {
+    query: {
+      match: {
+        numeroProcesso: cleanCNJ.replace(/\D/g, '')
+      }
+    }
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `APIKey ${datajudApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `DATAJUD status ${response.status}` });
+    }
+
+    const result = await response.json();
+    const hits = result.hits?.hits;
+    if (!hits || hits.length === 0) {
+      return res.json({ data: null });
+    }
+
+    const source = hits[0]._source;
+    const mapped = {
+      id: source.id || cleanCNJ,
+      numero_cnj: source.numeroProcesso,
+      classe: source.classe?.nome || 'Classe não informada',
+      tribunal: source.tribunal || tribunalSlug.toUpperCase(),
+      orgao_julgador: source.orgaoJulgador?.nome || 'Vara Indefinida',
+      data_ajuizamento: source.dataAjuizamento,
+      movimentacoes: (source.movimentacoes || []).map((m: any, i: number) => ({
+        id: i,
+        data: m.dataHora,
+        conteudo: m.movimento?.nome || 'Movimentação sem descrição',
+        nome: m.movimento?.nome
+      })),
+      partes: []
+    };
+    res.json({ data: mapped });
+  } catch (error) {
+    console.error(error);
+    res.status(502).json({ error: 'Falha ao consultar DATAJUD.' });
+  }
 });
 
 app.get('/api/contacts', (_req, res) => {
