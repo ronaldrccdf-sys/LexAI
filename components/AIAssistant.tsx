@@ -72,9 +72,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onAction, appContext }) => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100]">
+    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[100]">
       {isOpen ? (
-        <div className="w-80 sm:w-96 graphite-light border border-[#D4AF37]/30 rounded-[2.5rem] shadow-2xl flex flex-col h-[600px] animate-slideUp overflow-hidden">
+        <div className="w-[calc(100vw-2rem)] sm:w-96 graphite-light border border-[#D4AF37]/30 rounded-[2.5rem] shadow-2xl flex flex-col h-[70vh] sm:h-[600px] animate-slideUp overflow-hidden">
           <div className="p-6 gold-gradient flex justify-between items-center text-white shadow-lg">
             <h3 className="font-black flex items-center gap-3 text-sm uppercase tracking-widest">
               <div className="bg-white p-1.5 rounded-xl shadow-inner flex items-center justify-center">

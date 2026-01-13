@@ -1,10 +1,18 @@
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { legalAssistantService } from '../services/gemini';
 
 const Activities: React.FC = () => {
   const [description, setDescription] = useState('');
+  const [selectedMatter, setSelectedMatter] = useState('2023.0001.S - Inventário Souza');
+  const [duration, setDuration] = useState('');
+  const [entries, setEntries] = useState([
+    { id: '1', matter: '2023.0001.S - Inventário Souza', description: 'Revisão de documentos judiciais...', duration: '1.5' },
+    { id: '2', matter: '2023.0492.E - Recurso Trabalhista', description: 'Reunião com cliente e estratégia.', duration: '2.0' },
+    { id: '3', matter: '2023.0015.A - Ação de Cobrança', description: 'Elaboração de minuta processual.', duration: '1.0' }
+  ]);
   const [isFormatting, setIsFormatting] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const handleAIFormat = async () => {
     if (!description) return;
@@ -19,34 +27,67 @@ const Activities: React.FC = () => {
     }
   };
 
+  const handleNewEntry = () => {
+    setDescription('');
+    setDuration('');
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleSaveEntry = () => {
+    if (!description.trim()) {
+      alert('Descreva o serviço para registrar a atividade.');
+      return;
+    }
+    const newEntry = {
+      id: Math.random().toString(36).slice(2, 9),
+      matter: selectedMatter,
+      description: description.trim(),
+      duration: duration || '1.0'
+    };
+    setEntries(prev => [newEntry, ...prev]);
+    setDescription('');
+    setDuration('');
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
-      <header className="flex justify-between items-center">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h2 className="text-3xl font-bold gold-text">Atividades</h2>
           <p className="text-gray-500">Lançamento de horas e gestão de produtividade.</p>
         </div>
-        <button className="gold-gradient px-6 py-2 rounded-lg font-bold text-white shadow-lg">
+        <button onClick={handleNewEntry} className="w-full sm:w-auto gold-gradient px-6 py-2 rounded-lg font-bold text-white shadow-lg">
           + NOVO LANÇAMENTO
         </button>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
-          <div className="graphite-light p-6 rounded-2xl border border-gray-800 shadow-xl">
+          <div ref={formRef} className="graphite-light p-6 rounded-2xl border border-gray-800 shadow-xl">
             <h3 className="text-lg font-bold mb-4">Registro Rápido</h3>
             <div className="space-y-4">
-              <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1">
                   <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1">Processo</label>
-                  <select className="w-full bg-[#1C1C1C] border border-gray-700 p-2 rounded text-sm outline-none">
-                    <option>Selecione um processo...</option>
+                  <select
+                    value={selectedMatter}
+                    onChange={(e) => setSelectedMatter(e.target.value)}
+                    className="w-full bg-[#1C1C1C] border border-gray-700 p-2 rounded text-sm outline-none"
+                  >
                     <option>2023.0001.S - Inventário Souza</option>
+                    <option>2023.0492.E - Recurso Trabalhista</option>
+                    <option>2023.0015.A - Ação de Cobrança</option>
                   </select>
                 </div>
-                <div className="w-32">
+                <div className="w-full sm:w-32">
                   <label className="block text-[10px] text-gray-500 uppercase font-bold mb-1">Duração (h)</label>
-                  <input type="number" placeholder="0.0" className="w-full bg-[#1C1C1C] border border-gray-700 p-2 rounded text-sm outline-none" />
+                  <input
+                    type="number"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                    placeholder="0.0"
+                    className="w-full bg-[#1C1C1C] border border-gray-700 p-2 rounded text-sm outline-none"
+                  />
                 </div>
               </div>
               <div>
@@ -63,7 +104,7 @@ const Activities: React.FC = () => {
                   className="w-full bg-[#1C1C1C] border border-gray-700 p-3 rounded text-sm h-24 outline-none resize-none"
                 />
               </div>
-              <button className="w-full py-3 gold-gradient rounded-xl font-bold uppercase tracking-widest text-sm">Salvar Registro</button>
+              <button onClick={handleSaveEntry} className="w-full py-3 gold-gradient rounded-xl font-bold uppercase tracking-widest text-sm">Salvar Registro</button>
             </div>
           </div>
         </div>
@@ -72,15 +113,17 @@ const Activities: React.FC = () => {
           <div className="graphite-light p-6 rounded-2xl border border-gray-800 shadow-xl">
             <h3 className="text-lg font-bold mb-4">Lançamentos Recentes</h3>
             <div className="space-y-4">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="flex justify-between items-start border-b border-gray-800 pb-3 last:border-0">
+              {entries.length > 0 ? entries.map(entry => (
+                <div key={entry.id} className="flex justify-between items-start border-b border-gray-800 pb-3 last:border-0">
                   <div>
-                    <p className="text-xs font-bold text-[#D4AF37]">#2023.0001.S</p>
-                    <p className="text-xs text-gray-400">Revisão de documentos judiciais...</p>
+                    <p className="text-xs font-bold text-[#D4AF37]">#{entry.matter}</p>
+                    <p className="text-xs text-gray-400">{entry.description}</p>
                   </div>
-                  <p className="text-sm font-mono font-bold">1.5h</p>
+                  <p className="text-sm font-mono font-bold">{entry.duration}h</p>
                 </div>
-              ))}
+              )) : (
+                <p className="text-xs text-gray-500 italic">Nenhum lançamento recente.</p>
+              )}
             </div>
           </div>
         </div>

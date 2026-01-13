@@ -121,12 +121,12 @@ const App: React.FC = () => {
       <Sidebar currentView={currentView} onViewChange={setCurrentView} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-20 graphite-dark border-b border-gray-800/50 flex items-center justify-between px-10 shrink-0 z-30">
-          <div className="flex items-center gap-6">
+        <header className="h-16 sm:h-20 graphite-dark border-b border-gray-800/50 flex items-center justify-between px-4 sm:px-6 lg:px-10 shrink-0 z-30">
+          <div className="flex items-center gap-4 sm:gap-6">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden text-gray-400 p-2 hover:bg-white/5 rounded-xl">☰</button>
             <h2 className="text-[10px] font-black gold-text uppercase tracking-[0.5em] opacity-80">{currentView}</h2>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
              <button onClick={toggleTheme} className="p-3 bg-white/5 rounded-2xl border border-gray-800 text-lg">
                {theme === 'dark' ? '☀️' : '🌙'}
              </button>
@@ -134,7 +134,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-8 lg:p-14 overflow-y-auto no-scrollbar">
+        <main className="flex-1 p-4 sm:p-6 lg:p-14 overflow-y-auto no-scrollbar">
           <div className="max-w-7xl mx-auto h-full">{renderView()}</div>
         </main>
       </div>

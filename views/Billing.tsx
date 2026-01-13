@@ -47,7 +47,6 @@ const Billing: React.FC = () => {
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isProcessingMass, setIsProcessingMass] = useState(false);
-  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
   const clientBillingList = useMemo(() => {
     return clients.map(client => {
@@ -62,6 +61,50 @@ const Billing: React.FC = () => {
   }, [clients, contracts, cycles]);
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
+
+  const handleManualCycle = () => {
+    const selectedClient = selectedCycle
+      ? clients.find(client => client.id === selectedCycle.clientId)
+      : clients[0];
+
+    if (!selectedClient) {
+      alert('Nenhum cliente disponível para criar um ciclo manual.');
+      return;
+    }
+
+    const contract = contracts.find(c => c.clientId === selectedClient.id);
+    const now = new Date();
+    const period = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const dueDate = new Date(now.getFullYear(), now.getMonth(), 25).toISOString().split('T')[0];
+    const baseValue = contract?.monthlyValue || 0;
+    const successFeeValue = contract?.successPercentage ? Math.round(baseValue * (contract.successPercentage / 100)) : 0;
+
+    const newCycle: BillingCycle = {
+      id: `cy-${Date.now()}`,
+      clientId: selectedClient.id,
+      clientName: selectedClient.name,
+      period,
+      type: contract?.type || 'Mensalidade fixa',
+      baseValue,
+      successFeeValue,
+      totalValue: baseValue + successFeeValue,
+      status: 'Em preparação',
+      requirements: {
+        nf: false,
+        certidaoFederal: false,
+        certidaoEstadual: false,
+        certidaoMunicipal: false,
+        certidaoFGTS: false,
+        certidaoTrabalhista: false,
+        activityReport: false
+      },
+      dueDate
+    };
+
+    setCycles(prev => [newCycle, ...prev]);
+    setSelectedCycleId(newCycle.id);
+    alert(`Ciclo manual criado para ${selectedClient.name}.`);
+  };
 
   const handleGenerateReport = async () => {
     if (!selectedCycle) return;
@@ -89,6 +132,12 @@ const Billing: React.FC = () => {
     }, 2000);
   };
 
+  const handleSendCharge = () => {
+    if (!selectedCycle) return;
+    setCycles(prev => prev.map(c => c.id === selectedCycle.id ? { ...c, status: 'Enviado para pagamento' } : c));
+    alert(`Cobrança enviada para ${selectedCycle.clientName}.`);
+  };
+
   return (
     <div className="space-y-8 animate-fadeIn pb-20 px-2 sm:px-0 text-left">
       <header className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
@@ -105,7 +154,10 @@ const Billing: React.FC = () => {
           >
             {isProcessingMass ? '⚙️ PROCESSANDO...' : 'Sincronizar Todos Clientes'}
           </button>
-          <button className="gold-gradient px-8 py-4 rounded-2xl font-black text-white shadow-2xl text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all">
+          <button
+            onClick={handleManualCycle}
+            className="gold-gradient px-8 py-4 rounded-2xl font-black text-white shadow-2xl text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all"
+          >
             + NOVO CICLO MANUAL
           </button>
         </div>
@@ -161,7 +213,15 @@ const Billing: React.FC = () => {
                         )}
                       </td>
                       <td className="p-4 text-right">
-                        <button className="text-[10px] font-black uppercase text-[#D4AF37] hover:underline">Gerir</button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.currentCycle) setSelectedCycleId(item.currentCycle.id);
+                          }}
+                          className="text-[10px] font-black uppercase text-[#D4AF37] hover:underline"
+                        >
+                          Gerir
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -207,7 +267,9 @@ const Billing: React.FC = () => {
                    {isGeneratingReport ? 'COMPILANDO...' : '✨ RELATÓRIO MENSAL IA'}
                  </button>
                  <button 
-                  className="w-full py-4 gold-gradient rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-xl hover:scale-105 active:scale-95 transition-all"
+                  onClick={handleSendCharge}
+                  disabled={!selectedCycle || selectedCycle.status === 'Pago'}
+                  className="w-full py-4 gold-gradient rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                  >
                    ENVIAR COBRANÇA
                  </button>
