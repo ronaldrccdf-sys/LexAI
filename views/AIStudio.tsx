@@ -44,6 +44,7 @@ const AIStudio: React.FC<{ initialContext?: string, userName: string }> = ({ ini
   const [activeToolTab, setActiveToolTab] = useState<'files' | 'radar' | 'doutrina' | 'templates' | 'branding'>('files');
 
   const [wordTemplateFile, setWordTemplateFile] = useState<{name: string, data: string} | null>(null);
+  const [brandingHtml, setBrandingHtml] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -154,9 +155,37 @@ const AIStudio: React.FC<{ initialContext?: string, userName: string }> = ({ ini
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setWordTemplateFile({ name: file.name, data: (reader.result as string).split(',')[1] });
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      setWordTemplateFile({ name: file.name, data: base64 });
+      const templateHtml = await convertWordToHtml(base64);
+      setBrandingHtml(templateHtml || null);
+    };
     reader.readAsDataURL(file);
   };
+
+  const DEFAULT_BRANDING_HTML = `
+    <div style="width: 100%; text-align: center; font-family: 'Times New Roman', serif; color: black; margin-bottom: 40px;">
+      <div style="font-weight: bold; font-size: 18pt;">LexAI Advocacia</div>
+      <div style="font-size: 10pt;">Rua das Petições, 123 • Brasília/DF</div>
+      <div style="font-size: 10pt;">contato@lexai.adv.br • (61) 3333-0000</div>
+      <hr style="margin-top: 20px; border: none; border-top: 1px solid #000;" />
+    </div>
+    <div>
+      {{CONTEUDO}}
+    </div>
+  `;
+
+  const applyBranding = (content: string, template: string) => {
+    if (template.includes('{{CONTEUDO}}')) {
+      return template.replace('{{CONTEUDO}}', content);
+    }
+    return `${template}<br clear="all" style="page-break-before:always" />${content}`;
+  };
+
+  const brandedPreviewHtml = generatedHtml
+    ? applyBranding(generatedHtml, brandingHtml || DEFAULT_BRANDING_HTML)
+    : '';
 
   const handleDownloadDoc = async () => {
     if (!generatedHtml) return;
@@ -164,15 +193,9 @@ const AIStudio: React.FC<{ initialContext?: string, userName: string }> = ({ ini
 
     let contentToSave = generatedHtml;
 
-    if (wordTemplateFile) {
-      const templateHtml = await convertWordToHtml(wordTemplateFile.data);
-      if (templateHtml) {
-        if (templateHtml.includes('{{CONTEUDO}}')) {
-          contentToSave = templateHtml.replace('{{CONTEUDO}}', generatedHtml);
-        } else {
-          contentToSave = templateHtml + '<br clear="all" style="page-break-before:always" />' + generatedHtml;
-        }
-      }
+    const templateHtml = brandingHtml || DEFAULT_BRANDING_HTML;
+    if (templateHtml) {
+      contentToSave = applyBranding(generatedHtml, templateHtml);
     }
 
     const fullDocHtml = `
@@ -363,7 +386,7 @@ const AIStudio: React.FC<{ initialContext?: string, userName: string }> = ({ ini
                  </button>
                </div>
             </div>
-            <div className="font-serif text-justify leading-relaxed" dangerouslySetInnerHTML={{ __html: generatedHtml }} />
+            <div className="font-serif text-justify leading-relaxed" dangerouslySetInnerHTML={{ __html: brandedPreviewHtml }} />
           </div>
         ) : (
           <div className="py-40 opacity-10 text-center select-none pointer-events-none">

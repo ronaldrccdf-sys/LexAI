@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { AgendaEvent } from '../types';
 import { legalAssistantService } from '../services/gemini';
+import { api } from '../services/api';
 
 interface AgendaProps {
   events: AgendaEvent[];
@@ -73,7 +74,7 @@ const Agenda: React.FC<AgendaProps> = ({ events, setEvents }) => {
     }
   };
 
-  const handleAddActivity = () => {
+  const handleAddActivity = async () => {
     const newEvent: AgendaEvent = {
       id: Math.random().toString(36).substr(2, 9),
       type: form.type as any,
@@ -84,8 +85,14 @@ const Agenda: React.FC<AgendaProps> = ({ events, setEvents }) => {
       responsible: form.responsible || '',
       sourceId: 'manual'
     };
-    setEvents(prev => [newEvent, ...prev]);
-    setIsModalOpen(false);
+    try {
+      const saved = await api.createAgendaEvent(newEvent);
+      setEvents(prev => [saved, ...prev]);
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar evento no backend.');
+    }
   };
 
   return (

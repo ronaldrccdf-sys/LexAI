@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import AIAssistant from './components/AIAssistant';
 import Dashboard from './views/Dashboard';
@@ -12,6 +12,7 @@ import Billing from './views/Billing';
 import Reports from './views/Reports';
 import { View, Case, Hearing, AgendaEvent, Contact } from './types';
 import { legalAssistantService } from './services/gemini';
+import { api } from './services/api';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -22,26 +23,12 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
 
   // Application States
-  const [contacts, setContacts] = useState<Contact[]>([
-    { id: '1', name: 'Maria Souza', document: '123.456.789-00', email: 'maria@email.com', phone: '(11) 99999-9999', type: 'Individual', totalMatters: 2, folderId: 'folder_1', category: 'Recorrente', financialStatus: 'Em dia' }
-  ]);
-  const [matters, setMatters] = useState<Case[]>([
-    { 
-      id: '1', 
-      number: '1000234-12.2023.8.26.0100', 
-      title: 'Inventário Família Souza', 
-      client: 'Maria Souza', 
-      opposingParty: 'Fazenda Pública Estadual',
-      status: 'Aberto', 
-      type: 'Cível', 
-      responsible: 'Dr. Ronald Serra', 
-      openDate: '12/01/2023', 
-      billableHours: 42.5,
-      lastMovementSummary: 'O juiz determinou a juntada de novas certidões negativas de débito para prosseguimento da partilha.'
-    }
-  ]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [matters, setMatters] = useState<Case[]>([]);
   const [hearings, setHearings] = useState<Hearing[]>([]);
   const [agendaEvents, setAgendaEvents] = useState<AgendaEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Action Bridge for AI
   const handleAIAction = async (name: string, args: any) => {
@@ -59,8 +46,14 @@ const App: React.FC = () => {
           category: args.category || 'Novo (IA)',
           financialStatus: 'Em dia'
         };
-        setContacts(prev => [newClient, ...prev]);
-        return `Cliente ${args.name} cadastrado com sucesso na base de dados.`;
+        try {
+          const saved = await api.createContact(newClient);
+          setContacts(prev => [saved, ...prev]);
+          return `Cliente ${args.name} cadastrado com sucesso na base de dados.`;
+        } catch (error) {
+          console.error(error);
+          return 'Não foi possível salvar o cliente no backend.';
+        }
 
       case 'navigate_to_view':
         setCurrentView(args.view);
@@ -83,8 +76,14 @@ const App: React.FC = () => {
           openDate: new Date().toLocaleDateString('pt-BR'),
           billableHours: 0
         };
-        setMatters(prev => [newCase, ...prev]);
-        return `Processo ${args.number} criado e vinculado a ${args.clientName}.`;
+        try {
+          const saved = await api.createMatter(newCase);
+          setMatters(prev => [saved, ...prev]);
+          return `Processo ${args.number} criado e vinculado a ${args.clientName}.`;
+        } catch (error) {
+          console.error(error);
+          return 'Não foi possível salvar o processo no backend.';
+        }
 
       default:
         console.warn("Ação não reconhecida:", name);
@@ -95,6 +94,32 @@ const App: React.FC = () => {
     if (theme === 'light') document.documentElement.classList.add('light-mode');
     else document.documentElement.classList.remove('light-mode');
   }, [theme]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        await api.health();
+        const [contactsData, mattersData, hearingsData, agendaData] = await Promise.all([
+          api.getContacts(),
+          api.getMatters(),
+          api.getHearings(),
+          api.getAgenda()
+        ]);
+        setContacts(contactsData);
+        setMatters(mattersData);
+        setHearings(hearingsData);
+        setAgendaEvents(agendaData);
+        setApiError(null);
+      } catch (error) {
+        console.error(error);
+        setApiError('Backend indisponível. Inicie o servidor para acessar o LexAI.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
@@ -116,17 +141,35 @@ const App: React.FC = () => {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-primary flex items-center justify-center text-gray-400 text-sm">
+        Conectando ao backend...
+      </div>
+    );
+  }
+
+  if (apiError) {
+    return (
+      <div className="min-h-screen bg-primary flex flex-col items-center justify-center text-center gap-4 text-gray-400 text-sm px-6">
+        <p className="text-lg font-black gold-text">Backend obrigatório</p>
+        <p>{apiError}</p>
+        <p className="text-[10px] uppercase tracking-widest">Execute: cd backend && npm install && npm run dev</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-primary transition-colors duration-300">
       <Sidebar currentView={currentView} onViewChange={setCurrentView} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
       
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-20 graphite-dark border-b border-gray-800/50 flex items-center justify-between px-10 shrink-0 z-30">
-          <div className="flex items-center gap-6">
+        <header className="h-16 sm:h-20 graphite-dark border-b border-gray-800/50 flex items-center justify-between px-4 sm:px-6 lg:px-10 shrink-0 z-30">
+          <div className="flex items-center gap-4 sm:gap-6">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden text-gray-400 p-2 hover:bg-white/5 rounded-xl">☰</button>
             <h2 className="text-[10px] font-black gold-text uppercase tracking-[0.5em] opacity-80">{currentView}</h2>
           </div>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 sm:gap-6">
              <button onClick={toggleTheme} className="p-3 bg-white/5 rounded-2xl border border-gray-800 text-lg">
                {theme === 'dark' ? '☀️' : '🌙'}
              </button>
@@ -134,7 +177,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 p-8 lg:p-14 overflow-y-auto no-scrollbar">
+        <main className="flex-1 p-4 sm:p-6 lg:p-14 overflow-y-auto no-scrollbar">
           <div className="max-w-7xl mx-auto h-full">{renderView()}</div>
         </main>
       </div>

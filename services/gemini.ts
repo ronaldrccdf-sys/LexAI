@@ -1,8 +1,6 @@
 
-import { GoogleGenAI, Type, FunctionDeclaration, GenerateContentResponse } from "@google/genai";
 import * as mammoth from "mammoth";
-
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { api } from './api';
 
 export interface JurisprudenceItem {
   id: string;
@@ -75,62 +73,15 @@ export const convertWordToHtml = async (base64: string): Promise<string> => {
 
 export const legalAssistantService = {
   async generateDailyBriefing(stats: any, userName: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Gere um briefing diário estratégico LexAI para o advogado ${userName} baseado nestes dados: ${JSON.stringify(stats)}. 
-      REGRAS OBRIGATÓRIAS:
-      1. NÃO utilize caracteres especiais como asteriscos (*), hashtags (#), sublinhados (_) ou qualquer formatação markdown.
-      2. Mantenha a organização por tópicos claros.
-      3. Utilize apenas hifens (-) e quebras de linha para separar os pontos.
-      4. O tom deve ser executivo, direto e motivador.`,
-    });
-    // Limpeza extra no cliente para garantir remoção de markdown residual
-    return response.text?.replace(/[*#_~`>]/g, '') || '';
+    return api.aiDailyBriefing(stats, userName);
   },
 
   async searchJurisprudence(query: string, filters: JurisprudenceFilters): Promise<JurisprudenceItem[]> {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: `Pesquise jurisprudência recente nos tribunais brasileiros via Radar LexAI: ${query}.`,
-      config: { tools: [{ googleSearch: {} }] }
-    });
-    const items: JurisprudenceItem[] = [];
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    chunks.forEach((chunk: any, i: number) => {
-      if (chunk.web) {
-        items.push({ 
-          id: `j-${i}`, 
-          title: chunk.web.title, 
-          summary: '', // Resumo removido conforme solicitado
-          uri: chunk.web.uri 
-        });
-      }
-    });
-    return items;
+    return api.aiSearchJurisprudence(query);
   },
 
   async searchDoctrines(query: string): Promise<DoctrineItem[]> {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: `Aja como um pesquisador acadêmico jurídico. Busque no Google Acadêmico (scholar.google.com), Scielo e repositórios acadêmicos teses e artigos científicos sobre: ${query}. FOCO: Retorne os nomes exatos dos artigos e autores.`,
-      config: { tools: [{ googleSearch: {} }] }
-    });
-    const items: DoctrineItem[] = [];
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    chunks.forEach((chunk: any, i: number) => {
-      if (chunk.web) {
-        items.push({ 
-          id: `doc-${i}`, 
-          title: chunk.web.title || 'Artigo Acadêmico Indefinido', 
-          summary: '', // Resumo removido para focar no título e link
-          uri: chunk.web.uri 
-        });
-      }
-    });
-    return items;
+    return api.aiSearchDoctrines(query);
   },
 
   async advancedLegalDrafting(params: { 
@@ -139,176 +90,64 @@ export const legalAssistantService = {
     jurisprudence?: JurisprudenceItem[],
     doctrines?: DoctrineItem[] 
   }) {
-    const ai = getAI();
-    const parts: any[] = [];
-    let contextStr = "";
-    
-    for (const f of params.files) {
-      if (GEMINI_NATIVE_MIMES.includes(f.type)) {
-        parts.push({ inlineData: { data: f.data, mimeType: f.type } });
-      } else {
-        contextStr += `\nCONTEÚDO ARQUIVO ${f.name}: ${await extractTextFromWord(f.data)}`;
-      }
-    }
-
-    if (params.jurisprudence?.length) {
-      contextStr += `\n\nTESES JURISPRUDENCIAIS PARA USAR:\n${params.jurisprudence.map(j => `Julgado: ${j.title}`).join('\n')}`;
-    }
-
-    if (params.doctrines?.length) {
-      contextStr += `\n\nREFERÊNCIAS DOUTRINÁRIAS/ACADÊMICAS:\n${params.doctrines.map(d => `Artigo: ${d.title}`).join('\n')}`;
-    }
-
-    parts.push({ text: `${contextStr}\n\nSOLICITAÇÃO: ${params.prompt}` });
-
-    const res = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: { parts },
-      config: { 
-        systemInstruction: "Você é um Redator Jurídico Sênior LexAI. Escreva peças em HTML limpo (p, b, h1, br). IMPORTANTE: Jamais coloque Local, Data ou Assinatura ao final, o sistema fará isso automaticamente.",
-        temperature: 0.2
-      }
-    });
-    return { html: res.text?.replace(/```html/gi, '').replace(/```/g, '').trim() };
+    const payload = {
+      prompt: params.prompt,
+      files: await Promise.all(params.files.map(async (f) => ({
+        ...f,
+        data: GEMINI_NATIVE_MIMES.includes(f.type) ? f.data : await extractTextFromWord(f.data)
+      }))),
+      jurisprudence: params.jurisprudence,
+      doctrines: params.doctrines
+    };
+    return api.aiAdvancedDrafting(payload);
   },
 
   async interpretMovement(movement: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Interprete este movimento processual: ${movement}`,
-    });
-    return response.text;
+    return api.aiInterpretMovement(movement);
   },
 
   async smartTimeEntry(description: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Formalize este timesheet: ${description}`,
-    });
-    return response.text;
+    return api.aiSmartTimeEntry(description);
   },
 
   async extractHearingData(base64: string, mimeType: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { inlineData: { data: base64, mimeType } },
-          { text: "Extraia dados de audiência em JSON." }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(response.text || '{}');
+    return api.aiExtractData({ base64, mimeType, prompt: 'Extraia dados de audiência em JSON.' });
   },
 
   async extractClientOnboardingData(base64: string, mimeType: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { inlineData: { data: base64, mimeType } },
-          { text: "Extraia dados do cliente em JSON." }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(response.text || '{}');
+    return api.aiExtractData({ base64, mimeType, prompt: 'Extraia dados do cliente em JSON.' });
   },
 
   async extractProcessDataFromDoc(base64: string, mimeType: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { inlineData: { data: base64, mimeType } },
-          { text: "Extraia dados do processo em JSON." }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(response.text || '{}');
+    return api.aiExtractData({ base64, mimeType, prompt: 'Extraia dados do processo em JSON.' });
   },
 
   async extractContractData(base64: string, mimeType: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { inlineData: { data: base64, mimeType } },
-          { text: "Extraia dados do contrato em JSON." }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(response.text || '{}');
+    return api.aiExtractData({ base64, mimeType, prompt: 'Extraia dados do contrato em JSON.' });
   },
 
   async extractExecutionData(base64: string, mimeType: string) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { inlineData: { data: base64, mimeType } },
-          { text: "Extraia dados de execução em JSON." }
-        ]
-      },
-      config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(response.text || '{}');
+    return api.aiExtractData({ base64, mimeType, prompt: 'Extraia dados de execução em JSON.' });
   },
 
   async unifiedActionHandler(query: string, files: UploadedFile[], currentData: any) {
-    const ai = getAI();
-    const parts: any[] = [];
-    parts.push({ text: `Contexto: ${JSON.stringify(currentData)}. Comando: ${query}` });
-    const res = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: { parts }
-    });
-    return { text: res.text, toolCalls: [] };
+    const response = await api.aiUnifiedAction({ query, files, appContext: currentData });
+    return { text: response.text, toolCalls: [] };
   },
 
   async generateDailySummaryWhatsApp(events: any[]) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Resumo WhatsApp: ${JSON.stringify(events)}`,
-    });
-    return response.text;
+    return api.aiWhatsappSummary(events);
   },
 
   async generateBillingActivityReport(clientName: string, period: string, events: any[]) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Relatório de faturamento para ${clientName}: ${JSON.stringify(events)}`,
-    });
-    return response.text;
+    return api.aiBillingReport(clientName, period, events);
   },
 
   async generateManagementAnalysis(data: any) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: `Análise gerencial: ${JSON.stringify(data)}`,
-    });
-    return response.text;
+    return api.aiManagementAnalysis(data);
   },
 
   async answerManagementQuery(query: string, data: any) {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: `Consulta gestor: ${query}. Dados: ${JSON.stringify(data)}`,
-    });
-    return response.text;
+    return api.aiAnswerManagementQuery(query, data);
   }
 };

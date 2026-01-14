@@ -1,53 +1,19 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BillingCycle, Contract, BillingStatus, Contact } from '../types';
 import { legalAssistantService } from '../services/gemini';
+import { api } from '../services/api';
 
 const Billing: React.FC = () => {
   // Mock de contatos integrados
-  const [clients] = useState<Contact[]>([
-    { id: '1', name: 'Maria Souza', document: '123.456.789-00', email: 'maria@email.com', phone: '(11) 99999-9999', type: 'Individual', totalMatters: 2, folderId: 'folder_1', category: 'Recorrente', financialStatus: 'Em dia' },
-    { id: '2', name: 'Empresa XPTO', document: '12.345.678/0001-99', email: 'contato@xpto.com', phone: '(11) 3333-3333', type: 'Empresa', totalMatters: 1, folderId: 'folder_2', category: 'Contencioso em massa', financialStatus: 'Acordos em curso' }
-  ]);
-
-  const [contracts] = useState<Contract[]>([
-    { id: 'ct1', clientId: '1', type: 'Híbrido', monthlyValue: 2500, successPercentage: 20, validity: '2025-12-31', status: 'Ativo', adjustments: 'IGP-M', specialConditions: 'Exige Certidões Federais' },
-    { id: 'ct2', clientId: '2', type: 'Mensalidade fixa', monthlyValue: 5000, validity: '2024-06-30', status: 'Ativo', adjustments: 'IPCA', specialConditions: 'Relatório Mensal obrigatório' }
-  ]);
-
-  const [cycles, setCycles] = useState<BillingCycle[]>([
-    {
-      id: 'cy1',
-      clientId: '1',
-      clientName: 'Maria Souza',
-      period: 'Novembro 2023',
-      type: 'Híbrido',
-      baseValue: 2500,
-      successFeeValue: 1200,
-      totalValue: 3700,
-      status: 'Pago',
-      requirements: { nf: true, certidaoFederal: true, certidaoEstadual: true, certidaoMunicipal: true, certidaoFGTS: true, certidaoTrabalhista: true, activityReport: true },
-      dueDate: '2023-11-10'
-    },
-    {
-      id: 'cy2',
-      clientId: '2',
-      clientName: 'Empresa XPTO',
-      period: 'Novembro 2023',
-      type: 'Mensalidade fixa',
-      baseValue: 5000,
-      successFeeValue: 0,
-      totalValue: 5000,
-      status: 'Em preparação',
-      requirements: { nf: false, certidaoFederal: true, certidaoEstadual: false, certidaoMunicipal: false, certidaoFGTS: true, certidaoTrabalhista: false, activityReport: false },
-      dueDate: '2023-11-20'
-    }
-  ]);
-
+  const [clients, setClients] = useState<Contact[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [cycles, setCycles] = useState<BillingCycle[]>([]);
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isProcessingMass, setIsProcessingMass] = useState(false);
-  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const clientBillingList = useMemo(() => {
     return clients.map(client => {
@@ -63,6 +29,55 @@ const Billing: React.FC = () => {
 
   const selectedCycle = cycles.find(c => c.id === selectedCycleId);
 
+  const handleManualCycle = async () => {
+    const selectedClient = selectedCycle
+      ? clients.find(client => client.id === selectedCycle.clientId)
+      : clients[0];
+
+    if (!selectedClient) {
+      alert('Nenhum cliente disponível para criar um ciclo manual.');
+      return;
+    }
+
+    const contract = contracts.find(c => c.clientId === selectedClient.id);
+    const now = new Date();
+    const period = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const dueDate = new Date(now.getFullYear(), now.getMonth(), 25).toISOString().split('T')[0];
+    const baseValue = contract?.monthlyValue || 0;
+    const successFeeValue = contract?.successPercentage ? Math.round(baseValue * (contract.successPercentage / 100)) : 0;
+
+    const newCyclePayload: Omit<BillingCycle, 'id'> = {
+      clientId: selectedClient.id,
+      clientName: selectedClient.name,
+      period,
+      type: contract?.type || 'Mensalidade fixa',
+      baseValue,
+      successFeeValue,
+      totalValue: baseValue + successFeeValue,
+      status: 'Em preparação',
+      requirements: {
+        nf: false,
+        certidaoFederal: false,
+        certidaoEstadual: false,
+        certidaoMunicipal: false,
+        certidaoFGTS: false,
+        certidaoTrabalhista: false,
+        activityReport: false
+      },
+      dueDate
+    };
+
+    try {
+      const saved = await api.createBillingCycle(newCyclePayload);
+      setCycles(prev => [saved, ...prev]);
+      setSelectedCycleId(saved.id);
+      alert(`Ciclo manual criado para ${selectedClient.name}.`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao criar ciclo no backend.');
+    }
+  };
+
   const handleGenerateReport = async () => {
     if (!selectedCycle) return;
     setIsGeneratingReport(true);
@@ -73,7 +88,9 @@ const Billing: React.FC = () => {
       ];
       const report = await legalAssistantService.generateBillingActivityReport(selectedCycle.clientName, selectedCycle.period, mockEvents);
       alert("Relatório de Atividades Gerado via LexAI:\n\n" + report);
-      setCycles(prev => prev.map(c => c.id === selectedCycle.id ? { ...c, requirements: { ...c.requirements, activityReport: true } } : c));
+      const updatedRequirements = { ...selectedCycle.requirements, activityReport: true };
+      const updated = await api.updateBillingCycle(selectedCycle.id, { requirements: updatedRequirements });
+      setCycles(prev => prev.map(c => c.id === selectedCycle.id ? updated : c));
     } catch (err) {
       alert("Erro ao gerar relatório.");
     } finally {
@@ -83,11 +100,51 @@ const Billing: React.FC = () => {
 
   const handleMassBilling = async () => {
     setIsProcessingMass(true);
-    setTimeout(() => {
-      alert("LexAI processou todos os contratos integrados. Ciclos de faturamento atualizados.");
+    try {
+      const result = await api.syncBilling();
+      alert(result.message);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao sincronizar clientes no backend.');
+    } finally {
       setIsProcessingMass(false);
-    }, 2000);
+    }
   };
+
+  const handleSendCharge = async () => {
+    if (!selectedCycle) return;
+    try {
+      const updated = await api.updateBillingCycle(selectedCycle.id, { status: 'Enviado para pagamento' });
+      setCycles(prev => prev.map(c => c.id === selectedCycle.id ? updated : c));
+      alert(`Cobrança enviada para ${selectedCycle.clientName}.`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao enviar cobrança no backend.');
+    }
+  };
+
+  useEffect(() => {
+    const loadBilling = async () => {
+      try {
+        setIsLoading(true);
+        const [clientsData, contractsData, cyclesData] = await Promise.all([
+          api.getContacts(),
+          api.getContracts(),
+          api.getBillingCycles()
+        ]);
+        setClients(clientsData);
+        setContracts(contractsData);
+        setCycles(cyclesData);
+        setApiError(null);
+      } catch (error) {
+        console.error(error);
+        setApiError('Não foi possível carregar dados do faturamento.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadBilling();
+  }, []);
 
   return (
     <div className="space-y-8 animate-fadeIn pb-20 px-2 sm:px-0 text-left">
@@ -105,7 +162,10 @@ const Billing: React.FC = () => {
           >
             {isProcessingMass ? '⚙️ PROCESSANDO...' : 'Sincronizar Todos Clientes'}
           </button>
-          <button className="gold-gradient px-8 py-4 rounded-2xl font-black text-white shadow-2xl text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all">
+          <button
+            onClick={handleManualCycle}
+            className="gold-gradient px-8 py-4 rounded-2xl font-black text-white shadow-2xl text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all"
+          >
             + NOVO CICLO MANUAL
           </button>
         </div>
@@ -117,10 +177,15 @@ const Billing: React.FC = () => {
           <div className="graphite-light p-6 rounded-[2.5rem] border border-gray-800 shadow-xl overflow-hidden">
             <h3 className="text-lg font-black text-white uppercase tracking-tighter mb-6">Status de Faturamento por Cliente</h3>
             <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left text-sm min-w-[700px]">
-                <thead className="bg-[#121212] text-[9px] uppercase text-gray-500 font-black tracking-widest">
-                  <tr>
-                    <th className="p-4">Cliente</th>
+              {isLoading ? (
+                <p className="text-xs text-gray-500 italic">Carregando faturamento...</p>
+              ) : apiError ? (
+                <p className="text-xs text-red-400">{apiError}</p>
+              ) : (
+                <table className="w-full text-left text-sm min-w-[700px]">
+                  <thead className="bg-[#121212] text-[9px] uppercase text-gray-500 font-black tracking-widest">
+                    <tr>
+                      <th className="p-4">Cliente</th>
                     <th className="p-4">Tipo Contrato</th>
                     <th className="p-4">Vencimento</th>
                     <th className="p-4">Valor Mensal</th>
@@ -161,19 +226,28 @@ const Billing: React.FC = () => {
                         )}
                       </td>
                       <td className="p-4 text-right">
-                        <button className="text-[10px] font-black uppercase text-[#D4AF37] hover:underline">Gerir</button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.currentCycle) setSelectedCycleId(item.currentCycle.id);
+                          }}
+                          className="text-[10px] font-black uppercase text-[#D4AF37] hover:underline"
+                        >
+                          Gerir
+                        </button>
                       </td>
                     </tr>
                   ))}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
 
         {/* Painel de Detalhes da IA */}
         <div className="lg:col-span-4 space-y-6">
-          {selectedCycle ? (
+          {!isLoading && selectedCycle ? (
             <div className="graphite-light p-8 rounded-[2.5rem] border border-gray-800 shadow-2xl space-y-8 animate-fadeIn">
               <div className="text-center">
                 <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">Total deste Ciclo</p>
@@ -207,7 +281,9 @@ const Billing: React.FC = () => {
                    {isGeneratingReport ? 'COMPILANDO...' : '✨ RELATÓRIO MENSAL IA'}
                  </button>
                  <button 
-                  className="w-full py-4 gold-gradient rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-xl hover:scale-105 active:scale-95 transition-all"
+                  onClick={handleSendCharge}
+                  disabled={!selectedCycle || selectedCycle.status === 'Pago'}
+                  className="w-full py-4 gold-gradient rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
                  >
                    ENVIAR COBRANÇA
                  </button>

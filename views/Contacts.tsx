@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Contact, Case, Contract, LegalExecution, CaseType, ExecutionStatus, BillingCycle } from '../types';
 import { legalAssistantService } from '../services/gemini';
 import { fileStorage, StoredFile } from '../services/storage';
+import { api } from '../services/api';
 
 interface ContactsProps {
   externalContacts: Contact[];
@@ -23,33 +24,10 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
     setExternalContacts(newContacts);
   };
 
-  const [contracts, setContracts] = useState<Contract[]>([
-    { id: 'c1', clientId: '1', type: 'Híbrido', monthlyValue: 2500, successPercentage: 20, validity: '31/12/2025', status: 'Ativo', adjustments: 'IPCA anual', specialConditions: 'Assessoria extra-judicial' }
-  ]);
-
-  const [billingCycles] = useState<BillingCycle[]>([
-    {
-      id: 'cy1',
-      clientId: '1',
-      clientName: 'Maria Souza',
-      period: 'Novembro 2023',
-      type: 'Híbrido',
-      baseValue: 2500,
-      successFeeValue: 1200,
-      totalValue: 3700,
-      status: 'Pago',
-      requirements: { nf: true, certidaoFederal: true, certidaoEstadual: true, certidaoMunicipal: true, certidaoFGTS: true, certidaoTrabalhista: true, activityReport: true },
-      dueDate: '2023-11-10'
-    }
-  ]);
-
-  const [cases, setCases] = useState<Case[]>([
-    { id: 'ca1', number: '1000234-12.2023.8.26.0100', title: 'Inventário Souza', client: 'Maria Souza', status: 'Aberto', type: 'Conhecimento', responsible: 'Dr. Ronald Serra', openDate: '12/01/2023', billableHours: 42, currentSituation: 'Aguardando manifestação' }
-  ]);
-
-  const [executions, setExecutions] = useState<LegalExecution[]>([
-    { id: 'ex1', clientId: '2', matterId: 'ca2', contractId: 'c2', defendant: 'João Silva', origin: 'Acordo', valueExecuted: 15000, valueRecovered: 5000, feePercentage: 10, feesDue: 1500, feesPaid: 500, status: 'Em curso' }
-  ]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [billingCycles, setBillingCycles] = useState<BillingCycle[]>([]);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [executions, setExecutions] = useState<LegalExecution[]>([]);
 
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'contracts' | 'cases' | 'executions' | 'financial' | 'docs' | 'alerts' | 'intel'>('overview');
@@ -70,6 +48,51 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
       fileStorage.getClientFiles(selectedContactId).then(setClientFiles);
     }
   }, [selectedContactId]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [contractsData, mattersData, executionsData, cyclesData] = await Promise.all([
+          api.getContracts(),
+          api.getMatters(),
+          api.getExecutions(),
+          api.getBillingCycles()
+        ]);
+        setContracts(contractsData);
+        setCases(mattersData);
+        setExecutions(executionsData);
+        setBillingCycles(cyclesData);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleCallClient = () => {
+    if (!selectedContact?.phone) {
+      alert('Telefone não disponível para este cliente.');
+      return;
+    }
+    window.location.href = `tel:${selectedContact.phone}`;
+  };
+
+  const handleEmailClient = () => {
+    if (!selectedContact?.email) {
+      alert('E-mail não disponível para este cliente.');
+      return;
+    }
+    window.location.href = `mailto:${selectedContact.email}`;
+  };
+
+  const handleViewInvoices = () => {
+    const items = billingCycles.filter(cy => cy.clientId === selectedContactId);
+    if (items.length === 0) {
+      alert('Nenhum ciclo de faturamento disponível para este cliente.');
+      return;
+    }
+    alert(`Foram encontrados ${items.length} ciclo(s) para este cliente.`);
+  };
 
   const handleSmartIngest = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -102,7 +125,7 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
     }
   };
 
-  const confirmOnboarding = async () => {
+    const confirmOnboarding = async () => {
     if (!onboardingData) return;
 
     let targetClientId = '';
@@ -124,8 +147,9 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
         financialStatus: 'Em dia',
         lastMovement: `Cliente cadastrado via LexAI a partir de: ${onboardingData.documentType || 'Documento'}`
       };
-      updateContacts([newContact, ...contacts]);
-      targetClientId = newId;
+      const saved = await api.createContact(newContact);
+      updateContacts([saved, ...contacts]);
+      targetClientId = saved.id;
     }
 
     // Save File
@@ -174,7 +198,8 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
             adjustments: extractionResult.adjustments || 'Nenhum',
             specialConditions: extractionResult.specialConditions || 'Nenhuma'
           };
-          setContracts(prev => [...prev, newContract]);
+          const saved = await api.createContract(newContract);
+          setContracts(prev => [...prev, saved]);
         } else if (submodule === 'case') {
           extractionResult = await legalAssistantService.extractProcessDataFromDoc(base64Data, file.type);
           const newCase: Case = {
@@ -189,7 +214,8 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
             billableHours: 0,
             currentSituation: 'Novo caso criado via upload'
           };
-          setCases(prev => [...prev, newCase]);
+          const saved = await api.createMatter(newCase);
+          setCases(prev => [...prev, saved]);
         } else if (submodule === 'execution') {
           extractionResult = await legalAssistantService.extractExecutionData(base64Data, file.type);
           const newExecution: LegalExecution = {
@@ -206,7 +232,8 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
             feesPaid: 0,
             status: 'Em curso'
           };
-          setExecutions(prev => [...prev, newExecution]);
+          const saved = await api.createExecution(newExecution);
+          setExecutions(prev => [...prev, saved]);
         }
 
         await fileStorage.saveFile({
@@ -366,7 +393,7 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
               <h3 className="text-xl font-black uppercase tracking-tighter">Histórico Financeiro & Ciclos</h3>
               <p className="text-[10px] text-gray-500 uppercase font-bold">Faturas enviadas, pagas e apurações de êxito.</p>
             </div>
-            <button className="gold-gradient px-6 py-2 rounded-xl text-[10px] font-black text-white shadow-lg active:scale-95 transition-all">
+            <button onClick={handleViewInvoices} className="gold-gradient px-6 py-2 rounded-xl text-[10px] font-black text-white shadow-lg active:scale-95 transition-all">
               VISUALIZAR INVOICES
             </button>
           </header>
@@ -443,8 +470,8 @@ const Contacts: React.FC<ContactsProps> = ({ externalContacts, setExternalContac
             <p className="text-gray-500 text-xs font-mono mt-2 opacity-60 tracking-[0.1em]">{selectedContact.document} • {selectedContact.email}</p>
           </div>
           <div className="flex gap-3 sm:gap-4 w-full sm:w-auto mt-4 sm:mt-0">
-            <button className="flex-1 sm:flex-none p-4 sm:p-5 bg-green-900/20 text-green-400 rounded-2xl hover:bg-green-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📱</button>
-            <button className="flex-1 sm:flex-none p-4 sm:p-5 bg-blue-900/20 text-blue-400 rounded-2xl hover:bg-blue-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📧</button>
+            <button onClick={handleCallClient} className="flex-1 sm:flex-none p-4 sm:p-5 bg-green-900/20 text-green-400 rounded-2xl hover:bg-green-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📱</button>
+            <button onClick={handleEmailClient} className="flex-1 sm:flex-none p-4 sm:p-5 bg-blue-900/20 text-blue-400 rounded-2xl hover:bg-blue-500 hover:text-black transition-all shadow-xl active:scale-90 flex items-center justify-center">📧</button>
           </div>
         </header>
 
