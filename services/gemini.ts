@@ -2,7 +2,19 @@
 import { GoogleGenAI, Type, FunctionDeclaration, GenerateContentResponse } from "@google/genai";
 import * as mammoth from "mammoth";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const resolveApiKey = () =>
+  import.meta.env.VITE_GEMINI_API_KEY ||
+  import.meta.env.VITE_API_KEY ||
+  import.meta.env.GEMINI_API_KEY;
+
+const getAI = () => {
+  const apiKey = resolveApiKey();
+  if (!apiKey) {
+    console.warn('[LexAI] GEMINI API key ausente. Recursos de IA ficarão indisponíveis.');
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export interface JurisprudenceItem {
   id: string;
@@ -76,6 +88,9 @@ export const convertWordToHtml = async (base64: string): Promise<string> => {
 export const legalAssistantService = {
   async generateDailyBriefing(stats: any, userName: string) {
     const ai = getAI();
+    if (!ai) {
+      return '';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Gere um briefing diário estratégico LexAI para o advogado ${userName} baseado nestes dados: ${JSON.stringify(stats)}. 
@@ -91,6 +106,9 @@ export const legalAssistantService = {
 
   async searchJurisprudence(query: string, filters: JurisprudenceFilters): Promise<JurisprudenceItem[]> {
     const ai = getAI();
+    if (!ai) {
+      return [];
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `Pesquise jurisprudência recente nos tribunais brasileiros via Radar LexAI: ${query}.`,
@@ -113,6 +131,9 @@ export const legalAssistantService = {
 
   async searchDoctrines(query: string): Promise<DoctrineItem[]> {
     const ai = getAI();
+    if (!ai) {
+      return [];
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `Aja como um pesquisador acadêmico jurídico. Busque no Google Acadêmico (scholar.google.com), Scielo e repositórios acadêmicos teses e artigos científicos sobre: ${query}. FOCO: Retorne os nomes exatos dos artigos e autores.`,
@@ -140,6 +161,9 @@ export const legalAssistantService = {
     doctrines?: DoctrineItem[] 
   }) {
     const ai = getAI();
+    if (!ai) {
+      return { html: '<p>Serviço de IA indisponível. Configure a chave da API.</p>' };
+    }
     const parts: any[] = [];
     let contextStr = "";
     
@@ -174,6 +198,9 @@ export const legalAssistantService = {
 
   async interpretMovement(movement: string) {
     const ai = getAI();
+    if (!ai) {
+      return 'Serviço de IA indisponível no momento.';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Interprete este movimento processual: ${movement}`,
@@ -183,6 +210,9 @@ export const legalAssistantService = {
 
   async smartTimeEntry(description: string) {
     const ai = getAI();
+    if (!ai) {
+      return 'Serviço de IA indisponível no momento.';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Formalize este timesheet: ${description}`,
@@ -192,6 +222,9 @@ export const legalAssistantService = {
 
   async extractHearingData(base64: string, mimeType: string) {
     const ai = getAI();
+    if (!ai) {
+      return {};
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
@@ -207,6 +240,9 @@ export const legalAssistantService = {
 
   async extractClientOnboardingData(base64: string, mimeType: string) {
     const ai = getAI();
+    if (!ai) {
+      return {};
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
@@ -222,6 +258,9 @@ export const legalAssistantService = {
 
   async extractProcessDataFromDoc(base64: string, mimeType: string) {
     const ai = getAI();
+    if (!ai) {
+      return {};
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
@@ -237,6 +276,9 @@ export const legalAssistantService = {
 
   async extractContractData(base64: string, mimeType: string) {
     const ai = getAI();
+    if (!ai) {
+      return {};
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
@@ -252,6 +294,9 @@ export const legalAssistantService = {
 
   async extractExecutionData(base64: string, mimeType: string) {
     const ai = getAI();
+    if (!ai) {
+      return {};
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
@@ -267,6 +312,9 @@ export const legalAssistantService = {
 
   async unifiedActionHandler(query: string, files: UploadedFile[], currentData: any) {
     const ai = getAI();
+    if (!ai) {
+      return { text: 'Serviço de IA indisponível. Configure a chave da API.', toolCalls: [] };
+    }
     const parts: any[] = [];
     parts.push({ text: `Contexto: ${JSON.stringify(currentData)}. Comando: ${query}` });
     const res = await ai.models.generateContent({
@@ -278,6 +326,9 @@ export const legalAssistantService = {
 
   async generateDailySummaryWhatsApp(events: any[]) {
     const ai = getAI();
+    if (!ai) {
+      return 'Serviço de IA indisponível no momento.';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Resumo WhatsApp: ${JSON.stringify(events)}`,
@@ -287,6 +338,9 @@ export const legalAssistantService = {
 
   async generateBillingActivityReport(clientName: string, period: string, events: any[]) {
     const ai = getAI();
+    if (!ai) {
+      return 'Serviço de IA indisponível no momento.';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Relatório de faturamento para ${clientName}: ${JSON.stringify(events)}`,
@@ -296,6 +350,9 @@ export const legalAssistantService = {
 
   async generateManagementAnalysis(data: any) {
     const ai = getAI();
+    if (!ai) {
+      return 'Serviço de IA indisponível no momento.';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `Análise gerencial: ${JSON.stringify(data)}`,
@@ -305,6 +362,9 @@ export const legalAssistantService = {
 
   async answerManagementQuery(query: string, data: any) {
     const ai = getAI();
+    if (!ai) {
+      return 'Serviço de IA indisponível no momento.';
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: `Consulta gestor: ${query}. Dados: ${JSON.stringify(data)}`,

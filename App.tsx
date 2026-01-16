@@ -96,6 +96,14 @@ const App: React.FC = () => {
     else document.documentElement.classList.remove('light-mode');
   }, [theme]);
 
+  useEffect(() => {
+    console.log('[LexAI] App montado. View inicial:', currentView);
+  }, []);
+
+  useEffect(() => {
+    console.log('[LexAI] Tema atualizado:', theme);
+  }, [theme]);
+
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
   useEffect(() => {
